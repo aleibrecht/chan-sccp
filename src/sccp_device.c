@@ -2284,6 +2284,9 @@ void _sccp_dev_clean(devicePtr device, boolean_t remove_from_global, boolean_t r
 		sccp_device_setRegistrationState(d, SKINNY_DEVICE_RS_CLEANING);
 		if (remove_from_global) {
 			sccp_device_removeFromGlobals(d);
+			d->id[0] = 'D';
+			d->id[1] = 'E';
+			d->id[2] = 'F';
 		}
 
 		d->mwilight = 0;										/* reset mwi light */

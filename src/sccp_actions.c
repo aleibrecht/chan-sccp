@@ -519,6 +519,8 @@ void handle_token_request(constSessionPtr s, devicePtr no_d, constMessagePtr msg
 				pbx_log(LOG_NOTICE, "%s: Cleaning previous session, come back later, state:%s\n", DEV_ID_LOG(device), skinny_registrationstate2str(state));
 				sccp_session_crossdevice_cleanup(s, tmpdevice->session);
 				sccp_session_tokenReject(s, 10);
+				sccp_session_stopthread(s, SKINNY_DEVICE_RS_FAILED);
+				tmpdevice->session = NULL;
 				return;
 			}
 		}
@@ -701,6 +703,8 @@ void handle_SPCPTokenReq(constSessionPtr s, devicePtr no_d, constMessagePtr msg_
 				pbx_log(LOG_NOTICE, "%s: Cleaning previous session, come back later, state:%s\n", DEV_ID_LOG(device), skinny_registrationstate2str(state));
 				sccp_session_crossdevice_cleanup(s, tmpdevice->session);
 				sccp_session_tokenRejectSPCP(s, 10);
+				sccp_session_stopthread(s, SKINNY_DEVICE_RS_FAILED);
+				tmpdevice->session = NULL;
 				return;
 			}
 		}
@@ -982,6 +986,10 @@ FUNC_EXIT:
 		sccp_free(buf);
 	}
 #endif
+	sccp_session_stopthread(s, SKINNY_DEVICE_RS_FAILED);
+	if (device) {
+		device->session = NULL;
+	}
 	return;
 }
 
