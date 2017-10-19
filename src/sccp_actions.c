@@ -3342,20 +3342,7 @@ void handle_port_response(constSessionPtr s, devicePtr d, constMessagePtr msg_in
 				pbx_log(LOG_ERROR, "%s: Cannot handling incoming PortResponse MediaType:%s (yet)!\n", d->id, skinny_mediaType2str(mediaType));
 				return;
 		}
-		
-		if (channel && !sccp_netsock_equals(&sas, &rtp->phone_remote)) {
-			if (d->nat >= SCCP_NAT_ON) {
-				/* Rewrite ip-addres to the outside source address using the phones connection (device->sin) */
-				uint16_t port = sccp_netsock_getPort(&sas);
-				sccp_session_getSas(s, &sas);
-				
-				sccp_netsock_ipv4_mapped(&sas, &sas);
-				sccp_netsock_setPort(&sas, port);
-
-			}
-			sccp_rtp_set_phone(channel, rtp, &sas);
-			//rtp->receiveChannelState = SCCP_RTP_STATUS_PORTSET;
-		}
+		sccp_rtp_set_phone(channel, rtp, &sas);
 	}
 }
 

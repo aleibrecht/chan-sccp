@@ -630,7 +630,7 @@ int sccp_pbx_answered(sccp_channel_t * channel)
 	} else {
 
 		sccp_log((DEBUGCAT_CORE)) (VERBOSE_PREFIX_3 "%s: (sccp_pbx_answer) Outgoing call %s has been answered by remote party\n", c->currentDeviceId, iPbx.getChannelName(c));
-		sccp_channel_updateChannelCapability(c);
+		//sccp_channel_updateChannelCapability(c);
 
 		AUTO_RELEASE(sccp_device_t, d , sccp_channel_getDevice(c));
 		if (d) {

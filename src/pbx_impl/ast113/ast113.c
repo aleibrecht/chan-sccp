@@ -592,6 +592,55 @@ static int sccp_wrapper_asterisk113_indicate(PBX_CHANNEL_TYPE * ast, int ind, co
 	switch (ind) {
 		case AST_CONTROL_RINGING:
 			if (SKINNY_CALLTYPE_OUTBOUND == c->calltype) {
+				// TODO: Replace by ast_rtp_instance_get_codecs(rtp->instance) instead
+				{
+					// Use ast_rtp_instance_get_codecs(c->rtp.adio.rtp) instead of code below
+					struct ast_channel_iterator *iterator = ast_channel_iterator_all_new();
+
+					((struct ao2_iterator *) iterator)->flags |= AO2_ITERATOR_DONTLOCK;
+					/*! \todo handle multiple remotePeers i.e. DIAL(SCCP/400&SIP/300), find smallest common codecs, what order to use ? */
+					PBX_CHANNEL_TYPE *remotePeer;
+
+					for (; (remotePeer = ast_channel_iterator_next(iterator)); ast_channel_unref(remotePeer)) {
+						if (pbx_find_channel_by_linkid(remotePeer, (void *) ast_channel_linkedid(ast))) {
+							char buf[512];
+							
+							AUTO_RELEASE(sccp_channel_t, remoteSccpChannel , get_sccp_channel_from_pbx_channel(remotePeer));
+							if (remoteSccpChannel) {
+								sccp_codec_multiple2str(buf, sizeof(buf) - 1, remoteSccpChannel->preferences.audio, ARRAY_LEN(remoteSccpChannel->preferences.audio));
+								sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote preferences: %s\n", buf);
+								uint8_t x, y, z;
+
+								z = 0;
+								for (x = 0; x < SKINNY_MAX_CAPABILITIES && remoteSccpChannel->preferences.audio[x] != 0; x++) {
+									for (y = 0; y < SKINNY_MAX_CAPABILITIES && remoteSccpChannel->capabilities.audio[y] != 0; y++) {
+										if (remoteSccpChannel->preferences.audio[x] == remoteSccpChannel->capabilities.audio[y]) {
+											c->remoteCapabilities.audio[z++] = remoteSccpChannel->preferences.audio[x];
+										}
+									}
+								}
+							} else {
+								/* ask peer for it's codecs */
+								//ast_rtp_instance_get_codecs(c->rtp.adio.rtp);	
+								//ast_rtp_instance_get_codecs(c->rtp.video.instance);
+								struct ast_str *codec_buf = ast_str_alloca(64);
+								sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote nativeformats: %s\n", ast_format_cap_get_names(ast_channel_nativeformats(remotePeer), &codec_buf));
+								sccp_asterisk113_getSkinnyFormatMultiple(ast_channel_nativeformats(remotePeer), c->remoteCapabilities.audio, ARRAY_LEN(c->remoteCapabilities.audio));
+							}
+
+							sccp_codec_multiple2str(buf, sizeof(buf) - 1, c->remoteCapabilities.audio, ARRAY_LEN(c->remoteCapabilities.audio));
+							sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote caps: %s\n", buf);
+							ast_channel_unref(remotePeer);
+							break;
+						}
+					}
+					ast_channel_iterator_destroy(iterator);
+				}
+				/* This is the first real change we have to fixup the capabilities of both sides */
+				/* Reduce the number of allowed codecs */
+				sccp_channel_updateChannelCapability(c);
+				/* Choose the best */
+
 				// Allow signalling of RINGOUT only on outbound calls.
 				// Otherwise, there are some issues with late arrival of ringing
 				// indications on ISDN calls (chan_lcr, chan_dahdi) (-DD).
@@ -609,48 +658,8 @@ static int sccp_wrapper_asterisk113_indicate(PBX_CHANNEL_TYPE * ast, int ind, co
 					}
 					sccp_wrapper_asterisk113_setDialedNumber(c, c->dialedNumber);
 				}
+				
 				iPbx.set_callstate(c, AST_STATE_RING);
-
-				struct ast_channel_iterator *iterator = ast_channel_iterator_all_new();
-
-				((struct ao2_iterator *) iterator)->flags |= AO2_ITERATOR_DONTLOCK;
-				/*! \todo handle multiple remotePeers i.e. DIAL(SCCP/400&SIP/300), find smallest common codecs, what order to use ? */
-				PBX_CHANNEL_TYPE *remotePeer;
-
-				for (; (remotePeer = ast_channel_iterator_next(iterator)); ast_channel_unref(remotePeer)) {
-					if (pbx_find_channel_by_linkid(remotePeer, (void *) ast_channel_linkedid(ast))) {
-						char buf[512];
-						
-						AUTO_RELEASE(sccp_channel_t, remoteSccpChannel , get_sccp_channel_from_pbx_channel(remotePeer));
-						if (remoteSccpChannel) {
-							sccp_codec_multiple2str(buf, sizeof(buf) - 1, remoteSccpChannel->preferences.audio, ARRAY_LEN(remoteSccpChannel->preferences.audio));
-							sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote preferences: %s\n", buf);
-							uint8_t x, y, z;
-
-							z = 0;
-							for (x = 0; x < SKINNY_MAX_CAPABILITIES && remoteSccpChannel->preferences.audio[x] != 0; x++) {
-								for (y = 0; y < SKINNY_MAX_CAPABILITIES && remoteSccpChannel->capabilities.audio[y] != 0; y++) {
-									if (remoteSccpChannel->preferences.audio[x] == remoteSccpChannel->capabilities.audio[y]) {
-										c->remoteCapabilities.audio[z++] = remoteSccpChannel->preferences.audio[x];
-									}
-								}
-							}
-						} else {
-							/* ask peer for it's codecs */
-							//ast_rtp_instance_get_codecs(c->rtp.adio.rtp);	
-							//ast_rtp_instance_get_codecs(c->rtp.video.instance);
-							struct ast_str *codec_buf = ast_str_alloca(64);
-							sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote nativeformats: %s\n", ast_format_cap_get_names(ast_channel_nativeformats(remotePeer), &codec_buf));
-							sccp_asterisk113_getSkinnyFormatMultiple(ast_channel_nativeformats(remotePeer), c->remoteCapabilities.audio, ARRAY_LEN(c->remoteCapabilities.audio));
-						}
-
-						sccp_codec_multiple2str(buf, sizeof(buf) - 1, c->remoteCapabilities.audio, ARRAY_LEN(c->remoteCapabilities.audio));
-						sccp_log(DEBUGCAT_CODEC) (VERBOSE_PREFIX_4 "remote caps: %s\n", buf);
-						ast_channel_unref(remotePeer);
-						break;
-					}
-				}
-				ast_channel_iterator_destroy(iterator);
 			}
 			break;
 		case AST_CONTROL_BUSY:
@@ -688,6 +697,13 @@ static int sccp_wrapper_asterisk113_indicate(PBX_CHANNEL_TYPE * ast, int ind, co
 			break;
 		case AST_CONTROL_SRCCHANGE:									/* ask our channel's remote source address to update */
 			if (c->rtp.audio.instance) {
+				/*
+				if (SCCP_RTP_STATUS_INACTIVE == c->rtp.audio.mediaTransmissionState && !d->directrtp
+					&& (pbx_channel_state(c->owner) == AST_STATE_UP || SCCP_CHANNELSTATE_IsConnected(c->state))
+				) {
+					sccp_channel_startMediaTransmission(c);
+				}
+				*/
 				ast_rtp_instance_change_source(c->rtp.audio.instance);
 			}
 			res = 0;
@@ -3170,7 +3186,7 @@ const PbxInterface iPbx = {
 	rtp_setWriteFormat:		sccp_wrapper_asterisk113_setWriteFormat,
 	rtp_setReadFormat:		sccp_wrapper_asterisk113_setReadFormat,
 	rtp_destroy:			sccp_wrapper_asterisk113_destroyRTP,
-	rtp_stop:			ast_rtp_instance_stop(rtp),
+	rtp_stop:			ast_rtp_instance_stop,
 	rtp_codec:			NULL,
 	rtp_create_instance:		sccp_wrapper_asterisk113_createRtpInstance,
 	rtp_get_payloadType:		sccp_wrapper_asterisk113_get_payloadType,
